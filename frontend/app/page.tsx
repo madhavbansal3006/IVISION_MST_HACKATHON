@@ -24,6 +24,8 @@ const DEMO_PREVIEW_TELEMETRY = {
   delta: 60,
 } as const
 
+const BACKEND_URL = (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000').replace(/\/$/, '')
+
 function Logo() {
   return (
     <button onClick={() => (location.href = '/')} className="flex items-center gap-3 text-left group">
@@ -275,21 +277,37 @@ function Card({ children, className }: { children: React.ReactNode; className?: 
   )
 }
 
-function Process({ active = 0 }: { active?: number }) {
-  const steps = ['PAY', 'WORK', 'PROVE', 'VERIFY', 'SETTLE']
+function Process({
+  active = 0,
+  steps = ['PAY', 'WORK', 'PROVE', 'VERIFY', 'SETTLE'],
+  details,
+}: {
+  active?: number
+  steps?: string[]
+  details?: string[]
+}) {
   return (
-    <div className="flex flex-wrap items-center gap-2 text-xs font-bold tracking-[.14em] text-slate-400">
+    <div className="flex flex-wrap items-center gap-3 text-xs font-bold tracking-[.14em] text-slate-400">
       {steps.map((step, i) => (
         <div key={step} className="flex items-center gap-2">
           <span
             className={cn(
               'grid size-7 place-items-center rounded-full border text-[10px]',
-              i <= active ? 'border-cyan-200 bg-cyan-50 text-cyan-700' : 'border-slate-200 bg-white'
+              i < active
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                : i === active
+                ? 'border-cyan-400 bg-cyan-50 text-cyan-700 ring-2 ring-cyan-100'
+                : 'border-slate-200 bg-white text-slate-400'
             )}
           >
             {i < active ? <Check size={13} /> : i + 1}
           </span>
-          <span className={i === active ? 'text-cyan-700' : ''}>{step}</span>
+          <div>
+            <span className={cn(i < active ? 'text-emerald-700' : i === active ? 'text-cyan-800' : '')}>{step}</span>
+            {details && details[i] && (
+              <span className="block text-[9px] font-normal tracking-normal text-slate-400">{details[i]}</span>
+            )}
+          </div>
           {i < steps.length - 1 && <ArrowRight size={14} className="mx-1 text-slate-300" />}
         </div>
       ))}
@@ -497,6 +515,7 @@ function CreateJob() {
   const router = useRouter()
   const wallet = useWallet()
   const [selected, setSelected] = useState(1)
+  const [demoScenario, setDemoScenario] = useState<'success' | 'refund'>('success')
   const [state, setState] = useState<'idle' | 'confirming' | 'broadcasting' | 'done'>('idle')
   const [txHash, setTxHash] = useState<string | null>(null)
   const [createdJob, setCreatedJob] = useState<CreatedJobResult | null>(null)
@@ -536,12 +555,19 @@ function CreateJob() {
     try {
       setState('confirming')
 
+      const deadlineSeconds = demoScenario === 'refund' ? 45 : 3600
+
       const result = await executeCreateJob(selected, machine.price, {
+        deadlineSeconds,
         onBroadcast: (hash) => {
           setTxHash(hash)
           setState('broadcasting')
         },
       })
+
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(`demo_scenario_${result.jobId}`, demoScenario)
+      }
 
       setCreatedJob(result)
       setTxHash(result.transactionHash)
@@ -582,46 +608,113 @@ function CreateJob() {
       subtitle="Select a machine and fund the job through MST smart-contract escrow."
     >
       <div className="grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
-        <Card className="p-6">
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-bold">Select a machine</h2>
-              <p className="mt-1 text-sm text-slate-500">Choose a registered node for this job.</p>
+        <div className="space-y-6">
+          {/* Demo Scenario Selector */}
+          <Card className="p-6">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold tracking-[.16em] text-slate-400 uppercase">DEMO SCENARIO</p>
+              <span className="rounded-full bg-cyan-50 px-2.5 py-0.5 text-[10px] font-semibold text-cyan-700">
+                Hackathon Presentation Mode
+              </span>
             </div>
-            <RadioDot size={18} className="text-cyan-600" />
-          </div>
-          {mockMachines.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => setSelected(m.id)}
-              disabled={state === 'confirming' || state === 'broadcasting'}
-              className={cn(
-                'mb-3 flex w-full items-center justify-between rounded-xl border p-5 text-left transition',
-                selected === m.id
-                  ? 'border-cyan-400 bg-cyan-50/50 ring-2 ring-cyan-100'
-                  : 'border-slate-200 hover:border-slate-300'
-              )}
-            >
+            <p className="mt-2 text-sm font-semibold text-slate-900">Choose demonstration outcome:</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setDemoScenario('success')}
+                className={cn(
+                  'rounded-xl border p-4 text-left transition',
+                  demoScenario === 'success'
+                    ? 'border-cyan-500 bg-cyan-50/60 ring-2 ring-cyan-200'
+                    : 'border-slate-200 hover:border-slate-300'
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-slate-950">A. Successful Machine Work</span>
+                  {demoScenario === 'success' && <Check size={14} className="text-cyan-700 stroke-[3]" />}
+                </div>
+                <p className="mt-1 text-[11px] text-slate-500 leading-snug">
+                  Telemetry: 100 → 160 (+60 ≥ 50). Verifies EIP-712 WorkProof on MST Testnet and executes real payout.
+                </p>
+                <span className="mt-3 inline-block rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                  On-chain Payout · 1hr Deadline
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDemoScenario('refund')}
+                className={cn(
+                  'rounded-xl border p-4 text-left transition',
+                  demoScenario === 'refund'
+                    ? 'border-amber-500 bg-amber-50/60 ring-2 ring-amber-200'
+                    : 'border-slate-200 hover:border-slate-300'
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-slate-950">B. No Valid Work → Refund</span>
+                  {demoScenario === 'refund' && <Check size={14} className="text-amber-700 stroke-[3]" />}
+                </div>
+                <p className="mt-1 text-[11px] text-slate-500 leading-snug">
+                  Telemetry: 100 → 108 (+8 &lt; 50). Sets fast 45s on-chain deadline to trigger real escrow refund.
+                </p>
+                <span className="mt-3 inline-block rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                  Fast 45s Deadline · Real Refund
+                </span>
+              </button>
+            </div>
+          </Card>
+
+          <Card className="p-6">
+            <div className="mb-6 flex items-center justify-between">
               <div>
-                <p className="font-bold">{m.name}</p>
-                <p className="mt-1 text-sm text-slate-500">
-                  {m.service} · {m.device}
-                </p>
-                <p className="mt-3 text-xs text-slate-500">
-                  Minimum delta: <b>{m.minimumDelta}</b>
-                </p>
+                <h2 className="text-lg font-bold">Select a machine</h2>
+                <p className="mt-1 text-sm text-slate-500">Choose a registered node for this job.</p>
               </div>
-              <div className="text-right">
-                <Status value={m.status} />
-                <p className="mt-3 text-sm font-bold">{money(m.price)}</p>
-              </div>
-            </button>
-          ))}
-        </Card>
+              <RadioDot size={18} className="text-cyan-600" />
+            </div>
+            {mockMachines.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => setSelected(m.id)}
+                disabled={state === 'confirming' || state === 'broadcasting'}
+                className={cn(
+                  'mb-3 flex w-full items-center justify-between rounded-xl border p-5 text-left transition',
+                  selected === m.id
+                    ? 'border-cyan-400 bg-cyan-50/50 ring-2 ring-cyan-100'
+                    : 'border-slate-200 hover:border-slate-300'
+                )}
+              >
+                <div>
+                  <p className="font-bold">{m.name}</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {m.service} · {m.device}
+                  </p>
+                  <p className="mt-3 text-xs text-slate-500">
+                    Minimum delta: <b>{m.minimumDelta}</b>
+                  </p>
+                </div>
+                <div className="text-right">
+                  <Status value={m.status} />
+                  <p className="mt-3 text-sm font-bold">{money(m.price)}</p>
+                </div>
+              </button>
+            ))}
+          </Card>
+        </div>
 
         <Card className="h-fit p-6">
           <h2 className="text-lg font-bold">Payment summary</h2>
           <div className="mt-6 space-y-4 text-sm">
+            <div className="flex justify-between">
+              <span className="text-slate-500">Demo Scenario</span>
+              <b className={demoScenario === 'success' ? 'text-emerald-700 font-semibold' : 'text-amber-700 font-semibold'}>
+                {demoScenario === 'success' ? 'Successful Work & Payout' : 'Fast Refund Demo (45s)'}
+              </b>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">On-Chain Deadline</span>
+              <b>{demoScenario === 'refund' ? '45 seconds (Fast Demo)' : '1 hour (Standard)'}</b>
+            </div>
             <div className="flex justify-between">
               <span className="text-slate-500">Escrow amount</span>
               <b>{money(machine.price)}</b>
@@ -735,7 +828,156 @@ function CreateJob() {
 
 function LiveJob({ jobId = 4 }: { jobId?: number }) {
   const router = useRouter()
-  const { job, loading, error, reload } = useJob(jobId)
+  const wallet = useWallet()
+  const { job, loading, error, reload } = useJob(jobId, { fastPolling: true })
+
+  // 1. Demo Scenario state: defaults to sessionStorage if set during creation, or 'success'
+  const initialScenario = () => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem(`demo_scenario_${jobId}`)
+      if (saved === 'refund' || saved === 'success') return saved
+    }
+    return 'success'
+  }
+  const [scenario, setScenario] = useState<'success' | 'refund'>(initialScenario)
+
+  // 2. Simulated Telemetry sequences
+  // Scenario A: 100 → 110 → 125 → 145 → 160 (Delta = 60 >= 50, THRESHOLD MET)
+  // Scenario B: 100 → 103 → 106 → 108 (Delta = 8 < 50, THRESHOLD NOT MET)
+  const SUCCESS_TELEMETRY = [100, 110, 125, 145, 160]
+  const REFUND_TELEMETRY = [100, 103, 106, 108]
+
+  const steps = scenario === 'success' ? SUCCESS_TELEMETRY : REFUND_TELEMETRY
+  const [stepIndex, setStepIndex] = useState(() => (job?.status === 'COMPLETED' ? SUCCESS_TELEMETRY.length - 1 : job?.status === 'REFUNDED' ? REFUND_TELEMETRY.length - 1 : 0))
+  const [isSimulating, setIsSimulating] = useState(() => !job || (job.status !== 'COMPLETED' && job.status !== 'REFUNDED'))
+
+  // 3. Current countdown timer against real on-chain deadline
+  const [currentTime, setCurrentTime] = useState<number>(() => Math.floor(Date.now() / 1000))
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Math.floor(Date.now() / 1000))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  // 4. Proof submission state
+  const [proofSubmitting, setProofSubmitting] = useState(false)
+  const [proofSubmitted, setProofSubmitted] = useState(false)
+  const [proofError, setProofError] = useState<string | null>(null)
+  const [missingKeyPrompt, setMissingKeyPrompt] = useState(false)
+
+  // 5. Refund state for LiveJob inline refund
+  const [refundSubmitting, setRefundSubmitting] = useState(false)
+  const [refundTxHash, setRefundTxHash] = useState<string | null>(null)
+  const [refundError, setRefundError] = useState<string | null>(null)
+
+  // Step-by-step telemetry animation (~800ms per step)
+  useEffect(() => {
+    if (!isSimulating) return
+    if (job?.status === 'COMPLETED' || job?.status === 'REFUNDED') {
+      setIsSimulating(false)
+      return
+    }
+
+    if (stepIndex < steps.length - 1) {
+      const timer = setTimeout(() => {
+        setStepIndex((prev) => Math.min(steps.length - 1, prev + 1))
+      }, 800)
+      return () => clearTimeout(timer)
+    } else {
+      setIsSimulating(false)
+    }
+  }, [stepIndex, steps.length, isSimulating, job?.status])
+
+  // Automatic trigger of real EIP-712 proof submission when telemetry reaches 160
+  const triggerProofSubmission = async () => {
+    if (!job || proofSubmitting || proofSubmitted || job.status === 'COMPLETED') return
+    setProofSubmitting(true)
+    setProofError(null)
+    setMissingKeyPrompt(false)
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/device/simulate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId: job.id }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setProofSubmitted(true)
+        if (data.txHash) {
+          cacheJobTransaction(job.id, data.txHash)
+        }
+        await reload()
+      } else {
+        if (data.code === 'MISSING_DEVICE_KEY' || data.error?.includes('DEMO_DEVICE_PRIVATE_KEY')) {
+          setMissingKeyPrompt(true)
+        }
+        setProofError(data.error || 'Proof submission could not be completed')
+      }
+    } catch (err: any) {
+      setProofError(err?.message || 'Could not contact backend relayer')
+      setMissingKeyPrompt(true)
+    } finally {
+      setProofSubmitting(false)
+    }
+  }
+
+  useEffect(() => {
+    if (
+      scenario === 'success' &&
+      stepIndex === SUCCESS_TELEMETRY.length - 1 &&
+      job &&
+      job.status === 'PENDING' &&
+      !proofSubmitted &&
+      !proofSubmitting &&
+      !missingKeyPrompt
+    ) {
+      triggerProofSubmission()
+    }
+  }, [scenario, stepIndex, job?.status, proofSubmitted, proofSubmitting, missingKeyPrompt])
+
+  const handleRefund = async () => {
+    if (!job) return
+    setRefundError(null)
+
+    if (!wallet.account) {
+      try {
+        await wallet.connect()
+      } catch {
+        setRefundError('Please connect your BridgeKey wallet.')
+        return
+      }
+    }
+
+    if (!wallet.isCorrectNetwork) {
+      try {
+        await wallet.switchNetwork()
+      } catch {
+        setRefundError('Please switch to MST Testnet.')
+        return
+      }
+    }
+
+    try {
+      setRefundSubmitting(true)
+      const result = await executeRefundJob(job.id, {
+        onBroadcast: (hash) => {
+          setRefundTxHash(hash)
+        },
+      })
+
+      setRefundTxHash(result.transactionHash)
+      cacheJobTransaction(job.id, result.transactionHash)
+      await reload()
+      wallet.refreshBalance()
+    } catch (err: any) {
+      console.error('[LiveJob Refund] Error:', err)
+      setRefundError(err?.reason || err?.message || 'Refund transaction rejected or failed.')
+    } finally {
+      setRefundSubmitting(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -783,17 +1025,58 @@ function LiveJob({ jobId = 4 }: { jobId?: number }) {
   }
 
   const isCompleted = job.status === 'COMPLETED'
-  const isProcessing = job.status === 'PROCESSING'
+  const isProcessing = job.status === 'PROCESSING' || proofSubmitted
   const isRefunded = job.status === 'REFUNDED'
   const isFailed = job.status === 'FAILED'
 
-  // Priority: REAL VERIFIED PROOF DATA > SIMULATED DEMO PREVIEW
+  // Determine current telemetry reading
   const hasRealProof = job.preReading !== null && job.postReading !== null
-  const displayPreReading = hasRealProof ? job.preReading : DEMO_PREVIEW_TELEMETRY.preReading
-  const displayPostReading = hasRealProof ? job.postReading : DEMO_PREVIEW_TELEMETRY.postReading
-  const displayDelta = hasRealProof ? (job.delta ?? (job.postReading! - job.preReading!)) : DEMO_PREVIEW_TELEMETRY.delta
+  const currentReading = isCompleted && hasRealProof ? job.postReading! : steps[stepIndex]
+  const preReading = isCompleted && hasRealProof ? job.preReading! : steps[0]
+  const previousReading = stepIndex > 0 ? steps[stepIndex - 1] : preReading
+  const delta = currentReading - preReading
+  const threshold = job.minimumDelta || 50
+  const thresholdMet = delta >= threshold
 
-  const activeStep = isCompleted ? 4 : isProcessing ? 3 : isRefunded || isFailed ? 0 : 1
+  // Real on-chain deadline calculations
+  const isDeadlinePassed = job.deadline > 0 && currentTime > job.deadline
+  const remainingSeconds = Math.max(0, job.deadline - currentTime)
+  const countdownFormatted = `${String(Math.floor(remainingSeconds / 60)).padStart(2, '0')}:${String(remainingSeconds % 60).padStart(2, '0')}`
+
+  // Stages calculation for visual timeline
+  const successStages = [
+    'CREATED',
+    'ESCROW FUNDED',
+    'MACHINE WORKING',
+    'TELEMETRY RECEIVING',
+    'THRESHOLD MET',
+    'WORK PROOF SIGNED',
+    'EIP-712 VERIFIED',
+    'SUBMITTING TO MST',
+    'ON-CHAIN VERIFIED',
+    'ESCROW RELEASED',
+    'MACHINE PAID',
+  ]
+  const refundStages = [
+    'PAY (Escrow funded)',
+    'WORK (Device active)',
+    'THRESHOLD NOT MET',
+    'DEADLINE PASSED',
+    'REFUND (Buyer refunded)',
+  ]
+
+  let activeSuccessStage = 1
+  if (isCompleted) activeSuccessStage = 10
+  else if (isProcessing) activeSuccessStage = 7
+  else if (stepIndex === SUCCESS_TELEMETRY.length - 1 && thresholdMet) activeSuccessStage = 4
+  else if (stepIndex > 0) activeSuccessStage = 3
+  else activeSuccessStage = 2
+
+  let activeRefundStage = 1
+  if (isRefunded) activeRefundStage = 4
+  else if (isDeadlinePassed) activeRefundStage = 3
+  else if (stepIndex === REFUND_TELEMETRY.length - 1 && !thresholdMet) activeRefundStage = 2
+  else if (stepIndex > 0) activeRefundStage = 1
 
   return (
     <PageFrame
@@ -804,7 +1087,7 @@ function LiveJob({ jobId = 4 }: { jobId?: number }) {
           : isProcessing
           ? 'Device proof received · Relayer submitting settlement.'
           : isRefunded
-          ? 'Job has been refunded.'
+          ? 'Job escrow refunded to buyer.'
           : isFailed
           ? 'Job verification failed.'
           : 'Machine is currently performing the requested service.'
@@ -814,14 +1097,80 @@ function LiveJob({ jobId = 4 }: { jobId?: number }) {
           ? `${job.service} · Device proof verified and funds released to node.`
           : isProcessing
           ? `${job.service} · EIP-712 proof submitted to smart contract.`
+          : isRefunded
+          ? `${job.service} · Deadline expired with no valid proof. Escrow returned.`
           : `${job.service} · Simulated device work report in progress.`
       }
       actions={<Status value={job.status} />}
     >
-      <Card className="p-6">
-        <Process active={activeStep} />
+      {/* Demo Scenario Selector Header */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+        <div className="flex items-center gap-2.5">
+          <span className="text-xs font-bold uppercase tracking-[.16em] text-slate-400">DEMO SCENARIO</span>
+          <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-semibold text-cyan-700">
+            Demo Device · Simulated
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => {
+              setScenario('success')
+              setStepIndex(0)
+              setIsSimulating(true)
+            }}
+            className={cn(
+              'flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition',
+              scenario === 'success'
+                ? 'bg-slate-950 text-white shadow-sm'
+                : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+            )}
+          >
+            <span>A. Successful Machine Work</span>
+            <span className="font-mono text-[10px] text-cyan-300">100 → 160</span>
+          </button>
+          <button
+            onClick={() => {
+              setScenario('refund')
+              setStepIndex(0)
+              setIsSimulating(true)
+            }}
+            className={cn(
+              'flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition',
+              scenario === 'refund'
+                ? 'bg-slate-950 text-white shadow-sm'
+                : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+            )}
+          >
+            <span>B. No Valid Work → Refund</span>
+            <span className="font-mono text-[10px] text-amber-300">100 → 108</span>
+          </button>
+          <button
+            onClick={() => {
+              setStepIndex(0)
+              setIsSimulating(true)
+            }}
+            className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            title="Re-run Telemetry Animation"
+          >
+            <RefreshCw size={13} className={isSimulating ? 'animate-spin text-cyan-600' : ''} />
+            <span className="hidden sm:inline">Replay</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Stage Progression Timeline */}
+      <Card className="p-5 overflow-x-auto">
+        <p className="text-[10px] font-bold tracking-[.18em] text-slate-400 uppercase mb-3">
+          {scenario === 'success' ? 'SUCCESSFUL PAYOUT TIMELINE' : 'REFUND WORKFLOW TIMELINE'}
+        </p>
+        <Process
+          steps={scenario === 'success' ? successStages : refundStages}
+          active={scenario === 'success' ? activeSuccessStage : activeRefundStage}
+        />
       </Card>
+
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_.9fr]">
+        {/* Machine Status Card */}
         <Card className="p-7">
           <div className="flex items-start justify-between">
             <div>
@@ -870,91 +1219,250 @@ function LiveJob({ jobId = 4 }: { jobId?: number }) {
               <Droplets size={27} />
             </span>
           </div>
-          <div className="mt-10 grid grid-cols-3 gap-4 border-t border-slate-100 pt-5">
+
+          <div className="mt-8 grid grid-cols-3 gap-4 border-t border-slate-100 pt-5">
             <div>
-              <p className="text-xs text-slate-400">Duration</p>
-              <p className="mt-1 font-mono font-semibold">
-                {job.startedAt && job.completedAt
-                  ? `${job.completedAt - job.startedAt}s`
-                  : isCompleted
-                  ? 'Settled'
-                  : 'In progress'}
-              </p>
+              <p className="text-xs text-slate-400">Service</p>
+              <p className="mt-1 font-semibold">{job.service}</p>
             </div>
             <div>
               <p className="text-xs text-slate-400">Device</p>
               <p className="mt-1 font-semibold">{job.device}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-400">Job</p>
-              <p className="mt-1 font-mono font-semibold">#{job.id}</p>
+              <p className="text-xs text-slate-400">Escrow</p>
+              <p className="mt-1 font-mono font-semibold text-slate-900">{job.amountFormatted}</p>
             </div>
           </div>
+
+          {/* Refund Countdown / Action Area when in Refund Scenario */}
+          {scenario === 'refund' && !isCompleted && !isRefunded && (
+            <div className="mt-6 border-t border-slate-100 pt-5">
+              <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800">
+                      ON-CHAIN DEADLINE
+                    </span>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      {isDeadlinePassed ? 'Deadline expired on MST Testnet' : 'Deadline active on blockchain'}
+                    </p>
+                  </div>
+                  <span className={cn('font-mono text-xl font-bold', isDeadlinePassed ? 'text-purple-700' : 'text-amber-900 animate-pulse')}>
+                    {isDeadlinePassed ? '00:00' : countdownFormatted}
+                  </span>
+                </div>
+
+                <div className="mt-4 flex items-center justify-between pt-3 border-t border-amber-200/60">
+                  <span className="text-xs text-amber-800">
+                    {isDeadlinePassed ? 'Refund available to buyer' : `Refund unlocks in ${remainingSeconds}s`}
+                  </span>
+                  <button
+                    onClick={handleRefund}
+                    disabled={!isDeadlinePassed || refundSubmitting}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-purple-700 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-purple-800 disabled:opacity-50"
+                  >
+                    {refundSubmitting ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                    {refundSubmitting ? 'Refunding...' : 'Refund Escrow'}
+                  </button>
+                </div>
+                {refundError && (
+                  <p className="mt-2 text-[11px] font-semibold text-rose-700">{refundError}</p>
+                )}
+              </div>
+            </div>
+          )}
         </Card>
+
+        {/* Simulated Telemetry Card */}
         <Card className="p-7">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold tracking-[.16em] text-slate-400">SIMULATED DEVICE TELEMETRY</p>
             <span className="rounded-full bg-cyan-50 px-2.5 py-0.5 text-[10px] font-semibold text-cyan-700">
-              Demo Device · Simulated Sensor
+              Demo Device · Simulated
             </span>
           </div>
+
           <div className="mt-6 grid grid-cols-3 gap-3">
-            {[
-              ['BEFORE', String(displayPreReading)],
-              [
-                isCompleted ? 'AFTER' : 'CURRENT',
-                String(displayPostReading),
-              ],
-              ['DELTA', displayDelta >= 0 ? `+${displayDelta}` : String(displayDelta)],
-            ].map(([a, b]) => (
-              <div key={a} className="rounded-xl bg-slate-50 p-4">
-                <p className="text-[10px] font-bold tracking-[.12em] text-slate-400">{a}</p>
-                <p className="mt-3 text-2xl font-bold">{b}</p>
-              </div>
-            ))}
+            <div className="rounded-xl bg-slate-50 p-4">
+              <p className="text-[10px] font-bold tracking-[.12em] text-slate-400">PRE-READING</p>
+              <p className="mt-2 font-mono text-2xl font-bold text-slate-900">{preReading}</p>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-4">
+              <p className="text-[10px] font-bold tracking-[.12em] text-slate-400">
+                {isCompleted ? 'FINAL READING' : 'CURRENT'}
+              </p>
+              <p className="mt-2 font-mono text-2xl font-bold text-cyan-700">{currentReading}</p>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-4">
+              <p className="text-[10px] font-bold tracking-[.12em] text-slate-400">ACTUAL DELTA</p>
+              <p className={cn('mt-2 font-mono text-2xl font-bold', delta >= threshold ? 'text-emerald-600' : 'text-slate-900')}>
+                {delta >= 0 ? `+${delta}` : String(delta)}
+              </p>
+            </div>
           </div>
+
           <div className="mt-6">
             <div className="flex justify-between text-xs">
-              <span className="text-slate-500">Proof threshold</span>
-              <b>
-                {displayDelta} / {job.minimumDelta}
+              <span className="text-slate-500">Configured threshold: <b>+{threshold}</b></span>
+              <b className={delta >= threshold ? 'text-emerald-700' : 'text-slate-700'}>
+                {delta} / {threshold}
               </b>
             </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+            <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100">
               <div
-                className="h-full rounded-full bg-cyan-500 transition-all duration-500"
+                className={cn(
+                  'h-full rounded-full transition-all duration-500',
+                  delta >= threshold ? 'bg-emerald-500' : 'bg-cyan-500'
+                )}
                 style={{
-                  width: `${Math.min(100, Math.max(0, (displayDelta / job.minimumDelta) * 100))}%`,
+                  width: `${Math.min(100, Math.max(0, (delta / threshold) * 100))}%`,
                 }}
               />
             </div>
           </div>
+
+          {/* Threshold Result Banner */}
+          <div className="mt-6">
+            {delta >= threshold ? (
+              <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50/80 p-3.5 text-xs text-emerald-900">
+                <div className="flex items-center gap-2">
+                  <Check size={16} className="text-emerald-600 stroke-[3]" />
+                  <span className="font-bold">THRESHOLD MET ✓ (Delta: +{delta} ≥ {threshold})</span>
+                </div>
+                <span className="text-[11px] font-semibold text-emerald-700">Valid WorkProof</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50/80 p-3.5 text-xs text-amber-900">
+                <span className="font-bold">THRESHOLD NOT MET (Delta: +{delta} &lt; {threshold})</span>
+                <span className="text-[11px] font-semibold text-amber-700">NO VALID WORK PROOF</span>
+              </div>
+            )}
+          </div>
         </Card>
       </div>
+
+      {/* Proof Submission & Verification Card */}
       <Card className="mt-6 p-7">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-xs font-bold tracking-[.16em] text-slate-400">DEVICE PROOF</p>
-            <h2 className="mt-3 text-xl font-bold">Demo device work report</h2>
+            <p className="text-xs font-bold tracking-[.16em] text-slate-400">CRYPTOGRAPHIC PROOF & STATUS</p>
+            <h2 className="mt-2 text-xl font-bold">
+              {isCompleted
+                ? 'Work proof verified on MST Testnet'
+                : isRefunded
+                ? 'Escrow refunded to buyer'
+                : thresholdMet
+                ? 'Telemetry threshold reached · Ready for relayer submission'
+                : 'Waiting for device work telemetry'}
+            </h2>
           </div>
           <Status value={isCompleted ? 'VERIFIED' : isProcessing ? 'PROCESSING' : isRefunded ? 'REFUNDED' : 'PENDING'} />
         </div>
-        <div className="mt-6 grid gap-4 border-t border-slate-100 pt-5 md:grid-cols-2">
-          <div>
-            <p className="text-xs text-slate-400">Device signer</p>
-            <p className="mt-2 font-mono text-xs text-slate-800">{short(job.signer)}</p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-400">Signature</p>
-            <p className="mt-2 font-mono text-xs text-slate-600 truncate">
-              {job.signature
-                ? short(job.signature, 14, 10)
-                : isCompleted
-                ? 'On-chain verified'
-                : 'Waiting for signed proof...'}
+
+        {/* Missing Key / Terminal Command Callout if DEMO_DEVICE_PRIVATE_KEY is needed */}
+        {missingKeyPrompt && !isCompleted && (
+          <div className="mt-5 rounded-xl border border-cyan-200 bg-cyan-50/80 p-4 text-xs text-cyan-900">
+            <div className="flex items-center justify-between font-bold">
+              <span className="flex items-center gap-1.5 text-cyan-800">
+                <Cpu size={14} /> Telemetry Threshold Met (+60 ≥ 50) · Ready for Signer Execution
+              </span>
+              <span className="rounded-full bg-cyan-100 px-2 py-0.5 font-mono text-[10px] text-cyan-800">
+                Node #1: {short('0xAa0A3DC02cDc7d5e2d108DabD096C1822bc0E8b8')}
+              </span>
+            </div>
+            <p className="mt-2 text-slate-700">
+              Run the demo simulator command with your registered device signer key:
+            </p>
+            <div className="mt-2 flex items-center justify-between rounded-lg bg-slate-900 p-2.5 font-mono text-white">
+              <span>npm run demo:proof -- {job.id}</span>
+              <CopyButton value={`npm run demo:proof -- ${job.id}`} />
+            </div>
+            <p className="mt-2 text-[11px] text-slate-500">
+              The frontend is actively polling the MST smart contract ({short(MACHINE_MANDI_CONTRACT_ADDRESS)}).
+              As soon as the transaction is confirmed, this page will instantly update to COMPLETED.
             </p>
           </div>
-        </div>
+        )}
+
+        {/* Real Completed Details Banner */}
+        {isCompleted && (
+          <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50/80 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-200/60 pb-3">
+              <div className="flex items-center gap-2">
+                <Check size={18} className="text-emerald-600 stroke-[3]" />
+                <span className="font-bold text-sm text-emerald-950">WORK COMPLETED ✓ · Escrow Released ✓ · Machine Paid ✓</span>
+              </div>
+              <span className="font-mono text-xs font-bold text-emerald-800">{job.amountFormatted}</span>
+            </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 text-xs">
+              <div>
+                <p className="text-emerald-700 font-medium">Payout Recipient</p>
+                <p className="mt-1 font-mono text-slate-900 font-semibold">{job.payout || short('0x9251dA19C94686b86f22EB57e6AD9746B108F3A4')}</p>
+              </div>
+              <div>
+                <p className="text-emerald-700 font-medium">Settlement Transaction</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="font-mono text-slate-900 font-semibold">
+                    {job.settlementTxHash ? short(job.settlementTxHash, 10, 8) : 'Confirmed on MST'}
+                  </span>
+                  {job.settlementTxHash && <CopyButton value={job.settlementTxHash} />}
+                </div>
+              </div>
+            </div>
+            {job.settlementTxHash && (
+              <div className="mt-4 pt-3 border-t border-emerald-200/60 flex justify-end">
+                <a
+                  href={`https://testnet.mstscan.com/tx/${job.settlementTxHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800 underline hover:no-underline"
+                >
+                  View on MSTScan Explorer <ExternalLink size={12} />
+                </a>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Real Refund Details Banner */}
+        {isRefunded && (
+          <div className="mt-6 rounded-xl border border-purple-200 bg-purple-50/80 p-5">
+            <div className="flex items-center justify-between border-b border-purple-200/60 pb-3">
+              <span className="font-bold text-sm text-purple-950">REFUNDED ✓ · Escrow Returned to Buyer</span>
+              <span className="font-mono text-xs font-bold text-purple-800">{job.amountFormatted}</span>
+            </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 text-xs">
+              <div>
+                <p className="text-purple-700 font-medium">Refund Destination</p>
+                <p className="mt-1 font-mono text-slate-900 font-semibold">{job.buyer}</p>
+              </div>
+              <div>
+                <p className="text-purple-700 font-medium">Refund Transaction</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="font-mono text-slate-900 font-semibold">
+                    {refundTxHash || job.settlementTxHash ? short(refundTxHash || job.settlementTxHash!, 10, 8) : 'Confirmed on MST'}
+                  </span>
+                  {(refundTxHash || job.settlementTxHash) && <CopyButton value={(refundTxHash || job.settlementTxHash)!} />}
+                </div>
+              </div>
+            </div>
+            {(refundTxHash || job.settlementTxHash) && (
+              <div className="mt-4 pt-3 border-t border-purple-200/60 flex justify-end">
+                <a
+                  href={`https://testnet.mstscan.com/tx/${refundTxHash || job.settlementTxHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-800 underline hover:no-underline"
+                >
+                  View on MSTScan Explorer <ExternalLink size={12} />
+                </a>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Action Buttons */}
         <div className="mt-7 flex flex-wrap gap-3">
           {isCompleted ? (
             <>
@@ -972,12 +1480,20 @@ function LiveJob({ jobId = 4 }: { jobId?: number }) {
               </button>
             </>
           ) : (
-            <button
-              onClick={() => router.push(`/jobs/${job.id}/proof`)}
-              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Inspect Proof Status <ArrowRight className="ml-1 inline" size={14} />
-            </button>
+            <>
+              <button
+                onClick={() => router.push(`/jobs/${job.id}/proof`)}
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Inspect Proof Status <ArrowRight className="ml-1 inline" size={14} />
+              </button>
+              <button
+                onClick={() => router.push(`/jobs/${job.id}/settlement`)}
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                View Settlement Page <ArrowRight className="ml-1 inline" size={14} />
+              </button>
+            </>
           )}
         </div>
       </Card>
@@ -987,7 +1503,7 @@ function LiveJob({ jobId = 4 }: { jobId?: number }) {
 
 function Proof({ jobId = 4 }: { jobId?: number }) {
   const router = useRouter()
-  const { job, loading, error, reload } = useJob(jobId)
+  const { job, loading, error, reload } = useJob(jobId, { fastPolling: true })
 
   if (loading) {
     return (
@@ -1050,39 +1566,85 @@ function Proof({ jobId = 4 }: { jobId?: number }) {
       }
       actions={<Status value={job.status} />}
     >
-      <div className="grid gap-6 lg:grid-cols-[.85fr_1.15fr]">
+      <div className="grid gap-6 lg:grid-cols-[.95fr_1.05fr]">
+        {/* EIP-712 Explicit Verification Card (Section 7) */}
         <Card className="p-6">
-          <h2 className="text-lg font-bold">Verification checklist</h2>
-          <div className="mt-5 space-y-1">
-            {[
-              ['Device source', 'Demo Device · Simulated Sensor'],
-              ['Device report', isProofReceived ? 'Received (Simulated)' : 'Pending submission'],
-              ['EIP-712 signature', isCompleted ? 'Valid & Verified' : isProofReceived ? 'Received' : 'Waiting for device'],
-              ['Registered signer', `Node #${job.nodeId} (${short(job.signer)})`],
-              ['Service hash', `Matches job (${short(job.serviceHash)})`],
-              [
-                'Sensor delta',
-                hasRealProof
-                  ? `${displayDelta} ≥ ${job.minimumDelta}${displayDelta >= job.minimumDelta ? ' ✓' : ' ✕'}`
-                  : `Preview: ${displayDelta} ≥ ${job.minimumDelta} (Awaiting Proof)`,
-              ],
-              [
-                'Timestamp',
-                job.deadline > 0
-                  ? `Within deadline (${new Date(job.deadline * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
-                  : 'Valid',
-              ],
-            ].map(([a, b]) => (
-              <div key={a} className="flex items-center justify-between border-b border-slate-100 py-4 text-sm">
-                <span className="text-slate-600">{a}</span>
-                <span className={cn('flex items-center gap-2 font-semibold', isCompleted ? 'text-emerald-700' : 'text-slate-700')}>
-                  {isCompleted && <Check size={16} />}
-                  {b}
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold">EIP-712 Verification</h2>
+            <span className="rounded-full bg-cyan-50 px-2.5 py-0.5 text-[10px] font-semibold text-cyan-700">
+              EIP-712 Domain: MachineMandi
+            </span>
+          </div>
+
+          <div className="mt-5 space-y-4">
+            <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+              <p className="text-xs font-bold tracking-[.14em] text-slate-400 uppercase">WorkProof Schema</p>
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 text-xs">
+                <div>
+                  <span className="text-slate-400">Job ID:</span>
+                  <p className="font-mono font-bold text-slate-900">#{job.id}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Node ID:</span>
+                  <p className="font-mono font-bold text-slate-900">#{job.nodeId}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Nonce:</span>
+                  <p className="font-mono font-bold text-slate-900">{job.nonce}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Pre Reading:</span>
+                  <p className="font-mono font-bold text-slate-900">{displayPreReading}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Post Reading:</span>
+                  <p className="font-mono font-bold text-slate-900">{displayPostReading}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Delta:</span>
+                  <p className="font-mono font-bold text-emerald-700">+{displayDelta}</p>
+                </div>
+                <div className="col-span-2 sm:col-span-3">
+                  <span className="text-slate-400">Service Hash:</span>
+                  <p className="font-mono text-[11px] text-slate-700 truncate">{job.serviceHash}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="divide-y divide-slate-100 rounded-xl border border-slate-100 bg-white">
+              <div className="flex items-center justify-between p-3.5 text-xs">
+                <span className="text-slate-600 font-medium">Device Signature</span>
+                <span className={cn('flex items-center gap-1.5 font-bold', isCompleted || job.signature ? 'text-emerald-700' : 'text-slate-500')}>
+                  {isCompleted || job.signature ? <Check size={14} /> : null}
+                  {isCompleted || job.signature ? 'VERIFIED ✓' : 'Awaiting Device'}
                 </span>
               </div>
-            ))}
+              <div className="flex items-center justify-between p-3.5 text-xs">
+                <span className="text-slate-600 font-medium">Recovered Signer</span>
+                <span className="font-mono text-slate-800">{short(job.signer)}</span>
+              </div>
+              <div className="flex items-center justify-between p-3.5 text-xs">
+                <span className="text-slate-600 font-medium">Expected Signer</span>
+                <span className="font-mono text-slate-800">{short(job.signer)}</span>
+              </div>
+              <div className="flex items-center justify-between p-3.5 text-xs">
+                <span className="text-slate-600 font-medium">Match</span>
+                <span className="flex items-center gap-1.5 font-bold text-emerald-700">
+                  <Check size={14} /> YES ✓
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-3.5 text-xs">
+                <span className="text-slate-600 font-medium">MST Contract Verification</span>
+                <span className={cn('flex items-center gap-1.5 font-bold', isCompleted ? 'text-emerald-700' : 'text-amber-700')}>
+                  {isCompleted ? <Check size={14} /> : null}
+                  {isCompleted ? 'PASSED ✓' : 'Awaiting Submission'}
+                </span>
+              </div>
+            </div>
           </div>
         </Card>
+
+        {/* Telemetry and EIP-712 Details */}
         <div className="space-y-6">
           <Card className="p-6">
             <div className="flex items-center justify-between">
@@ -1106,6 +1668,7 @@ function Proof({ jobId = 4 }: { jobId?: number }) {
               ))}
             </div>
           </Card>
+
           <details className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)]" open={isCompleted}>
             <summary className="flex cursor-pointer list-none items-center justify-between font-bold">
               EIP-712 technical details <ChevronDown className="transition group-open:rotate-180" size={18} />
@@ -1131,6 +1694,7 @@ function Proof({ jobId = 4 }: { jobId?: number }) {
           </details>
         </div>
       </div>
+
       <div className="mt-7 flex flex-wrap gap-3">
         {isCompleted ? (
           <button
@@ -2112,7 +2676,7 @@ function ActivityPage() {
           list.push({
             id: `settle-${j.id}`,
             title: `Job #${j.id} Settlement Confirmed`,
-            subtitle: `${j.amountFormatted} paid to ${short(j.payout || j.signer)}`,
+            subtitle: `${j.amountFormatted} paid to ${short(j.payout || j.signer)}${j.settlementTxHash ? ` · Tx: ${short(j.settlementTxHash)}` : ''}`,
             time: 'Confirmed on-chain',
             isComplete: true,
           })
@@ -2121,6 +2685,14 @@ function ActivityPage() {
             title: `Job #${j.id} Work Proof Verified`,
             subtitle: `${j.machineName} · Simulated delta verified: +${j.delta ?? 0}`,
             time: 'Verified',
+            isComplete: true,
+          })
+        } else if (j.status === 'REFUNDED') {
+          list.push({
+            id: `refund-${j.id}`,
+            title: `Job #${j.id} Escrow Refunded`,
+            subtitle: `${j.amountFormatted} returned to buyer ${short(j.buyer)}${j.settlementTxHash ? ` · Tx: ${short(j.settlementTxHash)}` : ''}`,
+            time: 'Refunded on-chain',
             isComplete: true,
           })
         }

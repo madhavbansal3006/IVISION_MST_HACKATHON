@@ -381,3 +381,51 @@ deviceRouter.get('/job/:jobId', async (req: Request, res: Response): Promise<voi
 
   res.status(200).json({ success: true, job });
 });
+
+/**
+ * POST /api/device/simulate
+ * Triggers the demo device simulator flow to sign an EIP-712 WorkProof and submit to the relayer.
+ */
+deviceRouter.post('/simulate', async (req: Request, res: Response): Promise<void> => {
+  const jobId = parseInt(req.body?.jobId, 10);
+  if (isNaN(jobId) || jobId <= 0) {
+    res.status(400).json({ success: false, error: 'Invalid or missing jobId in request body' });
+    return;
+  }
+
+  const privateKey = process.env.DEMO_DEVICE_PRIVATE_KEY;
+  if (!privateKey || privateKey.trim() === '') {
+    res.status(400).json({
+      success: false,
+      error: `DEMO_DEVICE_PRIVATE_KEY is not configured in backend/.env. Please run "npm run demo:proof -- ${jobId}" from the terminal or add DEMO_DEVICE_PRIVATE_KEY.`,
+      code: 'MISSING_DEVICE_KEY',
+    });
+    return;
+  }
+
+  try {
+    const { runDemoSimulator } = await import('./demoSimulator');
+    const result = await runDemoSimulator({
+      jobId,
+      backendUrl: `http://localhost:${config.port}`,
+      preReading: 100,
+      postReading: 160,
+      silent: false,
+    });
+
+    res.status(200).json({
+      success: result.success,
+      jobId: result.jobId,
+      delta: result.delta,
+      recoveredSigner: result.recoveredSigner,
+      txHash: result.txHash,
+      message: 'Demo WorkProof signed and submitted to relayer',
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || 'Failed to execute demo device simulation',
+    });
+  }
+});
+
