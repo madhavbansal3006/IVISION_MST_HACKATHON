@@ -1,0 +1,30 @@
+{
+  "network": "MST Testnet",
+  "chainId": 91562037,
+  "machineMandi": {
+    "contractName": "MachineMandi",
+    "address": "0xac7F286057238bA05CC878A2d71dF265Fa1e9EEE",
+    "deploymentTx": "0xeb1004664c597511729d07c7b168de8d6f7e766ee5558a7e383b92f3deb8aafc",
+    "deploymentBlock": 5790572,
+    "deployer": "0x9251dA19C94686b86f22EB57e6AD9746B108F3A4",
+    "abiPath": "deployments/abi/MachineMandi.json",
+    "eip712Domain": {
+      "name": "MachineMandi",
+      "version": "1",
+      "chainId": 91562037,
+      "verifyingContract": "0xac7F286057238bA05CC878A2d71dF265Fa1e9EEE"
+    }
+  },
+  "mstTest": {
+    "contractName": "MSTTest",
+    "address": "0x1ebCB3D6A1D5DC349420901fc5824c55F6a27069",
+    "deploymentTx": "0xc1a8683f3a77d1d5ec352a1a20525100ec120e68ea967dca927e2be51d804422",
+    "deploymentBlock": 5787337
+  },
+  "ecrecoverProbe": {
+    "contractName": "EcrecoverProbe",
+    "address": "0x164739Ea5F1D64957b684D3797f025fd20C85FF5",
+    "deploymentTx": "0x8c39c62e42e8923acffaba260f64b5703f04a1856e61525d524163f74b5305b3",
+    "deploymentBlock": 5787768
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "machinemandi-backend",
+  "version": "1.0.0",
+  "description": "MachineMandi Backend Relayer Service for Physical Machine Proof Submissions to MST Blockchain",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "tsx test/lifecycle.test.ts && tsx test/simulator.test.ts",
+    "demo:proof": "tsx scripts/demoSimulator.ts",
+    "smoke:mst": "tsx scripts/smokeTestMst.ts"
+  },
+  "keywords": [
+    "machinemandi",
+    "relayer",
+    "blockchain",
+    "mst",
+    "iot",
+    "m2m"
+  ],
+  "author": "Member 3 — Backend / Relayer Engineer",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "ethers": "^6.13.5",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.17.19",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

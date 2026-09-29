@@ -1,0 +1,25 @@
+{
+  "networkName": "MST Testnet",
+  "chainId": 91562037,
+  "chainIdHex": "0x57530cd",
+  "nativeCurrency": {
+    "name": "MST",
+    "symbol": "MST",
+    "decimals": 18
+  },
+  "rpcUrls": [
+    "https://testnet-rpc.mstscan.com",
+    "https://testnetrpc.mstblockchain.com"
+  ],
+  "blockExplorerUrls": [
+    "https://testnet.mstscan.com"
+  ],
+  "compilerSettings": {
+    "solidity": "0.8.20",
+    "evmVersion": "paris",
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    }
+  }
+}
